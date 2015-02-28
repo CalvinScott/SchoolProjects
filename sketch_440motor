@@ -1,0 +1,108 @@
+#include <Wire.h>
+#include <Adafruit_MotorShield.h>
+#include <SPI.h>
+#include "utility/Adafruit_PWMServoDriver.h"
+#include "Adafruit_BLE_UART.h"
+
+// Bluetooth Definitions
+#define ADAFRUITBLE_REQ 10
+#define ADAFRUITBLE_RDY 2  // interrupt pin
+#define ADAFRUITBLE_RST 9
+
+Adafruit_BLE_UART BTLEserial = Adafruit_BLE_UART(ADAFRUITBLE_REQ, ADAFRUITBLE_RDY, ADAFRUITBLE_RST);
+
+// Create Motor Shield Object 
+Adafruit_MotorShield AFMS = Adafruit_MotorShield();
+Adafruit_StepperMotor *myMotor = AFMS.getStepper(200,1); // getStepper(steps,stepper#)
+int steps = 200;
+
+/******************Setup Loop************************/
+void setup() {
+  Serial.begin(9600);
+  while(!Serial);
+  Serial.println("Yay 440");
+
+  // Motor and Motor Shield Declarations
+  AFMS.begin(); // Put frequency as argument
+  myMotor->setSpeed(100); // Default rpm
+ 
+  
+  // Bluetooth Serial Declarations
+  BTLEserial.setDeviceName("HERMES"); // 7 characters max
+  BTLEserial.begin();
+}
+/*****************************************************/
+
+aci_evt_opcode_t laststatus = ACI_EVT_DISCONNECTED;
+
+/*****************Main Function***********************/
+void loop() {
+  
+   // Tell the nRF8001 to do whatever it should be working on.
+  BTLEserial.pollACI();
+
+  // Check for Current Status
+  aci_evt_opcode_t status = BTLEserial.getState();
+  // If the status changed...
+  if (status != laststatus) {
+    // Notify
+    if (status == ACI_EVT_DEVICE_STARTED) {
+        Serial.println(F("* Advertising started"));
+    }
+    if (status == ACI_EVT_CONNECTED) {
+        Serial.println(F("* Connected!"));
+    }
+    if (status == ACI_EVT_DISCONNECTED) {
+        Serial.println(F("* Disconnected or advertising timed out"));
+    }
+    // Update Status
+    laststatus = status;
+  }
+
+  if (status == ACI_EVT_CONNECTED) {
+    // Check for incoming Bluetooth Data
+    if (BTLEserial.available()) {
+      Serial.print("* "); Serial.print(BTLEserial.available()); Serial.println(F(" bytes available from BTLE"));
+    }
+    // Get characters and print while reading
+    while (BTLEserial.available()) {
+      char c = BTLEserial.read();
+      char d = BTLEserial.read();
+      Serial.print(c);
+                                                                                                  // Up         Down         Left         Right
+      if (c == '0' && d == '7'){  // "Up" signal from controller                         // Held  // B516       B615         B714         B813
+        //  Serial.println("Motor Forward");                                         // Released  // B507       B606         B705         B804
+          myMotor->step(steps, FORWARD, DOUBLE);
+      }
+      else if (c == '0' && d == '6'){ // "Down" signal from controller
+     //     Serial.println("Motor Reverse");
+          myMotor->step(steps, FORWARD, INTERLEAVE);
+        }  
+       else if (c == '0' && d == '5'){
+          steps = steps - 50;             //THIS IS WHERE WE STOPPED
+      }
+  }
+      
+
+    // Check any data FROM serial console
+
+    if (Serial.available()) {
+      // Read a line from Serial
+      Serial.setTimeout(100); // 100 millisecond timeout
+      String s = Serial.readString();
+
+      // We need to convert the line to bytes, no more than 20 at this time
+      uint8_t sendbuffer[20];
+      s.getBytes(sendbuffer, 20);
+      char sendbuffersize = min(20, s.length());
+
+      Serial.print(F("\n* Sending -> \"")); Serial.print((char *)sendbuffer); Serial.println("\"");
+
+      // write to Bluetooth
+      BTLEserial.write(sendbuffer, sendbuffersize);
+    }
+ }
+  
+}
+
+/*****************************************************/
