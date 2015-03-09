@@ -15,7 +15,9 @@ Adafruit_BLE_UART BTLEserial = Adafruit_BLE_UART(ADAFRUITBLE_REQ, ADAFRUITBLE_RD
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_StepperMotor *myMotor = AFMS.getStepper(200,1); // getStepper(steps,stepper#)
 int steps = 200;
-
+char A[8];
+char c;
+int i=0;
 /******************Setup Loop************************/
 void setup() {
   Serial.begin(9600);
@@ -41,11 +43,11 @@ void loop() {
    // Tell the nRF8001 to do whatever it should be working on.
   BTLEserial.pollACI();
 
-  // Check for Current Status
+  // Ask what is our current status
   aci_evt_opcode_t status = BTLEserial.getState();
-  // If the status changed...
+  // If the status changed....
   if (status != laststatus) {
-    // Notify
+    // print it out!
     if (status == ACI_EVT_DEVICE_STARTED) {
         Serial.println(F("* Advertising started"));
     }
@@ -55,36 +57,57 @@ void loop() {
     if (status == ACI_EVT_DISCONNECTED) {
         Serial.println(F("* Disconnected or advertising timed out"));
     }
-    // Update Status
+    // OK set the last status change to this one
     laststatus = status;
   }
 
   if (status == ACI_EVT_CONNECTED) {
-    // Check for incoming Bluetooth Data
+    // Lets see if there's any data for us!
     if (BTLEserial.available()) {
       Serial.print("* "); Serial.print(BTLEserial.available()); Serial.println(F(" bytes available from BTLE"));
     }
-    // Get characters and print while reading
+    // OK while we still have something to read, get a character and print it out
     while (BTLEserial.available()) {
-      char c = BTLEserial.read();
-      char d = BTLEserial.read();
+      // Obtain characters loop
+      for(i=0; i<2; i++){
+      A[i] = BTLEserial.read();
       Serial.print(c);
-                                                                                                  // Up         Down         Left         Right
-      if (c == '0' && d == '7'){  // "Up" signal from controller                         // Held  // B516       B615         B714         B813
-        //  Serial.println("Motor Forward");                                         // Released  // B507       B606         B705         B804
-          myMotor->step(steps, FORWARD, DOUBLE);
       }
-      else if (c == '0' && d == '6'){ // "Down" signal from controller
-     //     Serial.println("Motor Reverse");
-          myMotor->step(steps, FORWARD, INTERLEAVE);
+      i = 0;                                                                                // Test App // Up         Down         Left         Right
+      if (A[0] == '0' && A[1] == '0'){                                                        // Held  // B516       B615         B714         B813
+          Serial.println("Time-Lapse Mode");                                              // Released  // B507       B606         B705         B804
+          
+          while(c != '!'){ // Maybe an endline character, this loop may be fucked
+           c = BTLEserial.read();
+           A[i] = c;
+           i++;
+          }
+          // Decode the string
+          
+          
+          
+          myMotor->setSpeed(1); // Will probably need to be lower
+          myMotor->step(steps, FORWARD, MICROSTEP);
+          myMotor->step(steps, BACKWARD, MICROSTEP);  
+      }
+      
+      else if (A[0] == '0' && A[1] == '1'){ 
+          Serial.println("Stop-Motion Mode"); // 
+          myMotor->setSpeed(100); // Might need to change based on calculations
+          
+          for(i=0; i < 200; i++){
+          // Send LANC take picture
+          myMotor->step(10, FORWARD, INTERLEAVE);
+          }
         }  
-       else if (c == '0' && d == '5'){
-          steps = steps - 50;             //THIS IS WHERE WE STOPPED
+       else if (A[0] == '1' && A[1] == '0'){
+          Serial.println("Live Mode");
+          
       }
   }
       
 
-    // Check any data FROM serial console
+    // Next up, see if we have any data to get from the Serial console
 
     if (Serial.available()) {
       // Read a line from Serial
@@ -98,7 +121,7 @@ void loop() {
 
       Serial.print(F("\n* Sending -> \"")); Serial.print((char *)sendbuffer); Serial.println("\"");
 
-      // write to Bluetooth
+      // write the data
       BTLEserial.write(sendbuffer, sendbuffersize);
     }
  }
