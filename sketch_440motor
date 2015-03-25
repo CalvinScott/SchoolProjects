@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <Adafruit_MotorShield.h>
+#include <AccelStepper.h>
 #include <SPI.h>
 #include "utility/Adafruit_PWMServoDriver.h"
 #include "Adafruit_BLE_UART.h"
@@ -11,17 +12,21 @@
 
 Adafruit_BLE_UART BTLEserial = Adafruit_BLE_UART(ADAFRUITBLE_REQ, ADAFRUITBLE_RDY, ADAFRUITBLE_RST);
 
-// Create Motor Shield Object 
+// Create Motor Shield Object and Variables
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_StepperMotor *myMotor = AFMS.getStepper(200,1); // getStepper(steps,stepper#)
-int steps = 200;
-char A[8];
-char c;
-int i=0;
+int startStep = 0;
+int endStep = 0;
+uint8_t stepSpeed = 230;
+uint8_t bluecomm = 0;
+uint8_t mode = 0;
+uint8_t duration = 0;
+int i = 0;
+uint8_t A[10];
+
 /******************Setup Loop************************/
 void setup() {
   Serial.begin(9600);
-  while(!Serial);
   Serial.println("Yay 440");
 
   // Motor and Motor Shield Declarations
@@ -69,39 +74,49 @@ void loop() {
     // OK while we still have something to read, get a character and print it out
     while (BTLEserial.available()) {
       // Obtain characters loop
-      for(i=0; i<2; i++){
+      while(A[10] != 0xFF){       // Checking last byte in array -might- not work
+      for(i=0; i<11; i++){
       A[i] = BTLEserial.read();
-      Serial.print(c);
+      Serial.print(A[i]);
+        }
+      i = 0; 
       }
-      i = 0;                                                                                // Test App // Up         Down         Left         Right
-      if (A[0] == '0' && A[1] == '0'){                                                        // Held  // B516       B615         B714         B813
-          Serial.println("Time-Lapse Mode");                                              // Released  // B507       B606         B705         B804
+      // Obtain Mode
+      A[0] = mode;
+      // Note: should A[1] be reserved for LANC commands
+      
+      // Enter Mode Branching                                                                                      // Test App // Up         Down         Left         Right
+      if (mode == 0x00){                                                        // Held  // B516       B615         B714         B813
+          Serial.println("Live Mode");                                              // Released  // B507       B606         B705         B804
+          // Grab instantaneous speed
+          A[2] = stepSpeed;
+          //myMotor->setSpeed(stepSpeed);
           
-          while(c != '!'){ // Maybe an endline character, this loop may be fucked
-           c = BTLEserial.read();
-           A[i] = c;
-           i++;
+          if (A[1] == 0x00){
+              // Step FORWARD, by how much?
           }
-          // Decode the string
-          
-          
-          
-          myMotor->setSpeed(1); // Will probably need to be lower
-          myMotor->step(steps, FORWARD, MICROSTEP);
-          myMotor->step(steps, BACKWARD, MICROSTEP);  
+          else if (A[1] == 0x01){
+              // Step BACKWARD, by how much?
+          }         
+          else if (A[1] == 0x02){
+              // LANC Begin Recording
+          }
+          else if (A[1] == 0x03){
+            // LANC End Recording
+          }
+ 
       }
       
-      else if (A[0] == '0' && A[1] == '1'){ 
-          Serial.println("Stop-Motion Mode"); // 
-          myMotor->setSpeed(100); // Might need to change based on calculations
+      else if (mode == 0x01){ 
+          Serial.println("Time Lapse Mode"); // 
           
-          for(i=0; i < 200; i++){
+        //  for(i=0; i < 200; i++){
           // Send LANC take picture
-          myMotor->step(10, FORWARD, INTERLEAVE);
-          }
+
+          //}
         }  
-       else if (A[0] == '1' && A[1] == '0'){
-          Serial.println("Live Mode");
+       else if (mode = 0x02){
+          Serial.println("Stop-Motion Mode");
           
       }
   }
