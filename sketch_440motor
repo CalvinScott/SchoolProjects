@@ -1,5 +1,7 @@
-/* The following code was prepared by the team at vitaMotu for the Hermes Camera Motion Controller.
-   Prepare for very descriptive code!
+/* The following code was prepared by the team at vitaMotu for the Hermes Camera Motion Controller. 
+   Last edited: April 6th, 2015
+   Serial.println() commands were commented out to save on space. The compiler physically puts strings into memory.
+   Use of Serial.println() corresponds to key areas during stages of debugging.
 */
 
 // Included libraries
@@ -11,7 +13,6 @@
 #include "Adafruit_BLE_UART.h"
 
 // Bluetooth Definitions
-
 Adafruit_BLE_UART BTLEserial = Adafruit_BLE_UART(10, 2, 9); //ADAFRUITBLE_REQ, ADAFRUITBLE_RDY, ADAFRUITBLE_RST
 
 // Create Motor Shield Object
@@ -45,14 +46,16 @@ int startStep = 0;
 int endStep = 0;
 int stepCount = 0;
 int totalStep = 0;
+int i = 0;
+int duration = 0;
 float microSpeed = 0;
 float microAccel = 0;
+
+// uint8_t specifically defines a byte (8-bits) of an unsigned integer
 uint8_t stepSpeed = 230;
 uint8_t maxAccel = 175;
 uint8_t mode = 0;
-int duration = 0;
 uint8_t damping = 0;
-int i = 0;
 uint8_t A[11];
 uint8_t error;
 uint8_t loopC = 0;
@@ -61,7 +64,6 @@ uint8_t command = 0xBB;
 /******************Setup Loop************************/
 void setup() {
   Serial.begin(9600);
-  //Serial.println("Yay 440");
 
   // Motor and Motor Shield Declarations
   AFMStop.begin(); // Put frequency as argument
@@ -74,10 +76,9 @@ void setup() {
   pinMode(7, OUTPUT);
   digitalWrite(4, LOW);
   
-  
   // Bluetooth Serial Declarations
- BTLEserial.setDeviceName("HERMES"); // 7 characters max
- BTLEserial.begin();
+  BTLEserial.setDeviceName("HERMES"); // 7 characters max
+  BTLEserial.begin();
 }
 /*****************************************************/
 
@@ -85,30 +86,35 @@ aci_evt_opcode_t laststatus = ACI_EVT_DISCONNECTED;
 
 /*****************Main Function***********************/
 void loop() {
-   // Tell the nRF8001 to do whatever it should be working on.
+   
+  // Basic ping to the nRF8001 chip
   BTLEserial.pollACI();
   digitalWrite(6, HIGH); // Turn Power LED ON
-  // Ask what is our current status
+  
+  // Ask what is our current Bluetooth status
   aci_evt_opcode_t status = BTLEserial.getState();
+  
   // If the status changed....
   if (status != laststatus) {
     // print it out!
     if (status == ACI_EVT_DEVICE_STARTED) {
-        Serial.println(F("* Advertising started"));
+       // Serial.println(F("* Advertising started"));
     }
     if (status == ACI_EVT_CONNECTED) {
-        Serial.println(F("* Connected!"));
+       // Serial.println(F("* Connected!"));
     }
     if (status == ACI_EVT_DISCONNECTED) {
-        Serial.println(F("* Disconnected or advertising timed out"));
+        // Serial.println(F("* Disconnected or advertising timed out"));
     }
     // Set the last status
     laststatus = status;
   }
 
-  if (status == ACI_EVT_CONNECTED) { // CHANGED FROM ACI_EVT_CONNECTED
+  // While connected...
+  if (status == ACI_EVT_CONNECTED) {
  
     digitalWrite(7, HIGH); // Turn Bluetooth LED ON
+    
     // While we still have something to read, get a character and print it out
     while ((BTLEserial.available()) && (status == ACI_EVT_CONNECTED)) {
 
@@ -125,41 +131,41 @@ void loop() {
             REC();
           }
           else if (command == 0x01){
-              // LANC End Recording7
+              // LANC End Recording
           }         
-          else if (command == 0x02){
+          else if (command == 0x02){     // Basic Move Left command
               stepper.moveTo(2500);
               while(stepper.distanceToGo() != 0){
                 stepper.run();
                 stepper.setMaxSpeed(stepSpeed);
                 stepper.setAcceleration(5+((1-(damping/100))*maxAccel));
                 BTLEserial.pollACI();
-                if(BTLEserial.available()){
+                if(BTLEserial.available()){  // Checks for update to Bluetooth commands
                     bluRead();
                 }
-                if(A[1] == 0x04){
+                if(A[1] == 0x04){ // Exit command
                     break;
                 } 
               }
           }
-          else if (command == 0x03){
+          else if (command == 0x03){ // Basic Move Right command
               stepper.moveTo(-2500);
               while(stepper.distanceToGo() != 0){
                 stepper.run();
                 stepper.setMaxSpeed(stepSpeed);
                 stepper.setAcceleration(5+((1-(damping/100))*maxAccel));
                 BTLEserial.pollACI();
-                if(BTLEserial.available()){
+                if(BTLEserial.available()){  // Checks for updates to Bluetooth commands
                     bluRead();
                 }
-                if(A[1] == 0x04){
+                if(A[1] == 0x04){ // Exit command
                     break;
                 } 
               }
           }
-          else if (command == 0x05){
+          else if (command == 0x05){  // Send app information regarding absolute position of the motor -> Use for setting position in app
             stepCount = stepper.currentPosition();
-            bluWrite();
+            bluWrite(); // Basic Bluetooth write
           }
       }
       
@@ -167,17 +173,16 @@ void loop() {
       else if (mode == 0x01){ 
          // Serial.println("Time Lapse Mode"); 
           stepCount = 0;
-          totalStep = abs(endStep - startStep);
-          microSpeed = (totalStep*16.0)/(duration);
-          microAccel = (100+((1-damping/100.0))*maxAccel);
-          microstepper.setMaxSpeed(microSpeed);
+          totalStep = abs(endStep - startStep); // Absolute difference of steps -> used to calculate speed
+          microSpeed = (totalStep*16.0)/(duration); // calculates the speed for the microstepping Accelmotor wrapped object
+          microAccel = (100+((1-damping/100.0))*maxAccel); // calculates the acceleration for the microstepping Accelmotor wrapped object
+          microstepper.setMaxSpeed(microSpeed); // sets values
           microstepper.setAcceleration(200);
 
-          stepper.setMaxSpeed(120);
-          stepper.setAcceleration(200);
          // Serial.println("Setting up position");
-         
          // Set-up Position
+         stepper.setMaxSpeed(120);
+         stepper.setAcceleration(200);
          stepper.moveTo(startStep); 
          stepper.runToPosition(); 
          stepCount = startStep; 
@@ -187,7 +192,7 @@ void loop() {
        // Stop-Motion Mode Loop
        else if (mode = 0x02){
          // Serial.println("Stop-Motion Mode");
-          totalStep = abs(endStep - startStep);
+          totalStep = abs(endStep - startStep); // Absolute difference of steps -> used to calculate incremental step
           totalStep = totalStep/(duration/loopC); // Amount of steps divided by interval, incremental step+
           stepper.setMaxSpeed(100);
           stepper.setAcceleration(25+(1-(damping/100))*maxAccel);
@@ -213,14 +218,14 @@ void loop() {
   }
  }
 
-void bluRead(){
-        do{      // Looks for sync bytes at end of message
-        for(i=0; i<12; i++){
-        A[i] = BTLEserial.read();
-        //Serial.print(A[i]); -- debugging purposes
-        }
-        i = 0;
-      }while((A[10] != 0xFF)&&(A[11] != 0xFF)&&(BTLEserial.available()));
+void bluRead(){ // Bluetooth Read command -> follows Bluetooth package Rx-Tx protocols as designed and specified by vitaMotu
+        do{     
+          for(i=0; i<12; i++){
+          A[i] = BTLEserial.read();
+          //Serial.print(A[i]); -> debugging purposes
+          }
+          i = 0;
+        }while((A[10] != 0xFF)&&(A[11] != 0xFF)&&(BTLEserial.available())); // Looks for sync bytes at end of message
       
       // Obtain Mode / other parameters
       mode = A[0];
@@ -238,8 +243,8 @@ void bluRead(){
       }
 }
 
-void bluWrite(){
-     // Bluetooth write command: sendbuffer = uint8_t, sendbuffersize =< 20; 
+void bluWrite(){    // Bluetooth Write command -> follows Bluetooth package Rx-Tx protocols as designed and specified by vitaMotu
+     
      uint8_t sendbuffer[12];
      sendbuffer[0] = 0x00;
      sendbuffer[1] = 0x00;
@@ -258,50 +263,52 @@ void bluWrite(){
 }
 
 void timelapse(){
-            if(startStep < endStep){
-              microstepper.move((long)totalStep*(-16.0));
-            }
+            
+     // Conditionals for checking which way we should move
+     if(startStep < endStep){
+           microstepper.move((long)totalStep*(-16.0));
+     }
+     else if(startStep > endStep){
+           microstepper.move((long)totalStep*(16.0));
+     }     
+     while(microstepper.distanceToGo() != 0){
+           microstepper.run();
+           BTLEserial.pollACI();
+           if(BTLEserial.available()){
+                bluRead();
+           }
+           if((command == 0x01)||(mode != 0x01)){   // Generic Stop command or Mode change
+                error = 0x22;
+           //   Serial.println("Time Lapse Broke");
+                mode = 0xAA;
+                return;
+           }       
+     }
+     if(loopC == 0x01){ // Check if we want to loop back
+           if(startStep < endStep){ // Conditionals as before for setting direction
+                microstepper.moveTo((long)startStep*(16.0));
+           }
             else if(startStep > endStep){
-              microstepper.move((long)totalStep*(16.0));
-            }     
-            while(microstepper.distanceToGo() != 0){
-               microstepper.run();
-               BTLEserial.pollACI();
-               if(BTLEserial.available()){
-                    bluRead();
-               }
-               if((command == 0x01)||(mode != 0x01)){   // Generic Stop command or Mode change
-                    error = 0x22;
-                 //   Serial.println("Time Lapse Broke");
-                    mode = 0xAA;
-                    return;
-               }       
-            }
-           if(loopC == 0x01){
-              if(startStep < endStep){
-              microstepper.moveTo((long)startStep*(16.0));
-            }
-            else if(startStep > endStep){
-              microstepper.moveTo((long)startStep*(-16.0));
+                microstepper.moveTo((long)startStep*(-16.0));
             }  
             // Serial.println("Entered Backward Operation");    
               while(microstepper.distanceToGo() != 0){
               microstepper.run();
               BTLEserial.pollACI();
-              if(BTLEserial.available()){
-                    bluRead();
-              }
-              if((command == 0x01)||(mode != 0x01)){   // Generic Stop command or Mode change
-                    error = 0x22;
-                  //  Serial.println("Time Lapse Broke");
-                    mode = 0xAA;
-                    return;
-                }       
+                  if(BTLEserial.available()){
+                      bluRead();
+                  }
+                  if((command == 0x01)||(mode != 0x01)){   // Generic Stop command or Mode change
+                      error = 0x22;
+                      //  Serial.println("Time Lapse Broke");
+                      mode = 0xAA;
+                      return;
+                  }       
               }
           // LANC Stop Recording
-             }
-             mode = 0xAA;
-             return;
+     }
+     mode = 0xAA; // resets the mode -> successful loop
+     return;
 }
 
 void stopmotion(){
@@ -314,6 +321,8 @@ void stopmotion(){
               stepper.moveTo((long)(-1)*stepCount);
             }
             stepper.runToPosition();
+            
+            // Delay before taking picture -> allows motor to run successfully
             delay(1000);
             REC();
             Serial.println(loopC);
@@ -333,28 +342,25 @@ void stopmotion(){
             return;
 }
        
-
 void REC() {
   digitalWrite(4, HIGH); //set LANC line to +5V
   delay(30);
   digitalWrite(4, LOW);
 }
-  /*
+  /* Below is unused code developed for the original REC function, however the final 2 byte LANC commands were unable to send
   i = 0;
   while (i < 5) {  //repeat 5 times to make sure the camera accepts the command
       while (pulseIn(5, HIGH) < 5000) {   
-      //"pulseIn, HIGH" catches any 0V TO +5V TRANSITION and waits until the LANC line goes back to 0V 
-      //"pulseIn" also returns the pulse duration so we can check if the previous +5V duration was long enough (>5ms) to be the pause before a new 8 byte data packet
-      // Loop until pulse duration is >5ms
+      // "pulseIn, HIGH" catches any 0V TO +5V TRANSITION and waits until the LANC line goes back to 0V Loop till pulse duration is >5ms
       }
 
-      //LOW after long pause means the START bit of Byte 0 is here
+      // LOW after long pause means the START bit of Byte 0 is here
       delayMicroseconds(96);  //wait START bit duration
-      
-      //Write the 8 bits of byte 0   
-      //"18hex" or “00011000”  tells the camera that there will be a normal command to camera in the next byte
-      //Note that the command bits have to be put out in reverse order with the least significant, right-most bit (bit 0) first
-      //39hex or 00111001
+   
+      // Write the 8 bits of byte 0   
+      // "18hex" or “00011000”  tells the camera that there will be a normal command to camera in the next byte. "39hex" or 00111001
+      // Note that the command bits have to be put out in reverse order with the least significant, right-most bit (bit 0) first
+
       digitalWrite(4, LOW);  //Write bit 0. 
       delayMicroseconds(96); 
       digitalWrite(4, LOW);  //Write bit 1 
@@ -374,17 +380,14 @@ void REC() {
       //Byte 0 is written now put LANC line back to +5V
       digitalWrite(4, LOW);
       delayMicroseconds(10); //make sure to be in the stop bit before byte 1
-
       while (digitalRead(5)) { 
       //Loop as long as the LANC line is +5V during the stop bit
       }
-
-      //0V after the previous stop bit means the START bit of Byte 1 is here
+      // 0V after the previous stop bit means the START bit of Byte 1 is here
       delayMicroseconds(96);  //wait START bit duration
-
-      //Write the 8 bits of Byte 1
-      //"33hex" or “00110011” sends the  Record Start/Stop command
-      //Note that the command bits have to be put out in reverse order with the least significant, right-most bit (bit 0) first
+      // Write the 8 bits of Byte 1
+      // "33hex" or “00110011” sends the Record Start/Stop command
+      // Note that the command bits have to be put out in reverse order with the least significant, right-most bit (bit 0) first
       digitalWrite(4, HIGH);  //Write bit 0 
       delayMicroseconds(96);
       digitalWrite(4, HIGH);  //Write bit 1 
@@ -405,12 +408,9 @@ void REC() {
       digitalWrite(4, LOW); 
       i++;  //increase repeat count by 1
       Serial.println("end write");
-  }
-}
-      /*Control bytes 0 and 1 are written, now don’t care what happens in Bytes 2 to 7
-      and just wait for the next start bit after a long pause to send the first two command bytes again.
+      /*Control bytes 0 and 1 are written, now don’t care what happens in Bytes 2 to 7 and just wait for the next start bit after a long pause to send the first two command bytes again.
       }//While cmdRepeatCount < 5
- */
+ }
 /******End of code***********************************************/
 /****************************************************************/
 /* Error Codes
